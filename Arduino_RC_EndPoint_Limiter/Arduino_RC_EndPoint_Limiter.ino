@@ -1,5 +1,5 @@
-// Servo switch for burket valves
-// Jake Anderson 2018-05-14
+// Limit switch processor, limits drive to prevent pushing into the end stop and blowing things up
+// Jake Anderson 2018-11-11
 // Don't kill yourself with it, let me know if you use it.
 // This is set up for digital radios so it's very intolerant of bad signals
 // Designed for an arduino nano, serial rate is 115200
@@ -7,7 +7,7 @@
 // Slower LED flashes during operation with rx of valid signal
 // designed for 50 PPS servo signals 1-2ms long
 
-#define Version 0.21
+#define Version 0.001
 
 // I/O setup
 #define RCInputPin 2 // pin the reciever is connected to
