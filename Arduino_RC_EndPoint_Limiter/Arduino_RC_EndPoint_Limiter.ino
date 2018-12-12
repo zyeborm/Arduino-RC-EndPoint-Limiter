@@ -12,11 +12,12 @@
 // I/O setup
 #define RCInputPin 2 // pin the reciever is connected to
 #define LEDOutPin 13 // pin the status LED is connected to
-#define ValveOutPin 4 // pin the fet switch to run the burket is connected to
+#define RCOutputPin 4 // pin the fet switch to run the burket is connected to
 
 // Tuning
-#define TriggerPoint 1250 // 1250 what pulsewidth value do we need to fire (in microsconds - between 1000 and 2000 generally)
-#define PulseOutTime 200 // how many ms we keep the output on for
+#define CenterPointInput 1000 // Central pulse width
+#define MaxOutputPulse // cap output to value
+#define MinOutputPulse // cap output to value
 
 //Safety Stuff, has defaults first in comments
 #define FireSafetyReq 2 // 2 how many good pulses above the trigger value are needed (so a random high pulse won't trigger it)
