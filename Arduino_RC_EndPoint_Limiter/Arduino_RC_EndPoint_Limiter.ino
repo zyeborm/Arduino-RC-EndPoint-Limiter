@@ -15,15 +15,16 @@
 #define RCOutputPin 4 // pin the fet switch to run the burket is connected to
 
 // Tuning
-#define CenterPointInput 1000 // Central pulse width
-#define MaxOutputPulse // cap output to value
-#define MinOutputPulse // cap output to value
+#define CenterPointInput 1500 // Central pulse width input
+#define CenterPointInputMin 1400 //Central pulse width input minimum value considered as centered for safety (a tollerance essentially)
+#define CenterPointInputMax 1600 //Central pulse width input maximum value considered as centered for safety (a tollerance essentially)
+
+#define MaxOutputPulse 2000 // cap output to value
+#define MinOutputPulse 1000 // cap output to value
+#define CenterOutputPulse 1500 // Central pulse width input
 
 //Safety Stuff, has defaults first in comments
-#define FireSafetyReq 2 // 2 how many good pulses above the trigger value are needed (so a random high pulse won't trigger it)
-#define LowPulsesReq 10 // 10 how many low pulses are needed between firings
-#define FilterMod 32 // 32 at 50 pps servo rate 32 is ~2hz 
-#define StartupPulsesRequired 100 // 100 how may pulses below the trigger point are needed before starting, ensures trigger is off before running
+#define StartupPulsesRequired 100 // 100 how may pulses between CenterPointInputMin and Max are needed before starting, ensures no movement when powered on
 #define MinPulse 900 // 900 min valid signal pulse
 #define MaxPulse 2300 // 2300 max valid signal pulse
 #define SignalLimit 10 // 10 how many good servo pulses are needed to say we have good signal. 
