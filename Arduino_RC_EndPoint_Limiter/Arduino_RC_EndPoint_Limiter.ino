@@ -5,14 +5,21 @@
 // Designed for an arduino nano, serial rate is 115200
 // fast LED flashes during startup with RX of valid signal
 // Slower LED flashes during operation with rx of valid signal
-// designed for 50 PPS servo signals 1-2ms long
+// designed for ~50 PPS servo signals 1-2ms long
 
 #define Version 0.001
 
 // I/O setup
 #define RCInputPin 2 // pin the reciever is connected to
 #define LEDOutPin 13 // pin the status LED is connected to
-#define RCOutputPin 4 // pin the fet switch to run the burket is connected to
+#define RCOutputPin 4 // pin the RC pulseout is sent on
+
+//for both of these operation of the LED is enabled even without input signal, to allow for testing
+//solid on for limit switch hit
+//fast flashing for RC output enabled and a limit switch engaged
+#define SwitchHiPin    // pin for LED indicating the high switch is triggered and output is limited as a result
+#define SwitchLowPin   // pin for LED indicating the low switch is triggered and output is limited as a result
+
 
 // Tuning
 #define CenterPointInput 1500 // Central pulse width input
@@ -28,6 +35,7 @@
 #define MinPulse 900 // 900 min valid signal pulse
 #define MaxPulse 2300 // 2300 max valid signal pulse
 #define SignalLimit 10 // 10 how many good servo pulses are needed to say we have good signal. 
+#define CenterPulsesReq 100 // how many pulses between CenterPointInputMin and CenterPointInputMax are required to arm
 
 byte ValidPulseTrain = 0; //how many good pulses have we recieved
 bool SignalGood = false; // have we recieved enough good servo pulses to trust the input
@@ -43,27 +51,23 @@ void setup() {
 
   pinMode(RCInputPin, INPUT); // Set our input pins as such
   pinMode(LEDOutPin, OUTPUT); // Set our output pins as such
-  pinMode(ValveOutPin, OUTPUT); // Set our output pins as such
+  pinMode(RCOutputPin, OUTPUT); // Set our output pins as such
 
   Serial.begin(115200); // init serial high speed to minimise time in serial though it's meant to be non blocking now 2000000
   digitalWrite(LEDOutPin, LOW);
-  digitalWrite(ValveOutPin, LOW);
+  digitalWrite(RCOutputPin, LOW);
 
-  Serial.println("Servo switch starting");
+  Serial.println("End point limiter starting");
   Serial.print("Version : ");
   Serial.println(Version);
-  Serial.print("Trigger Point: ");
-  Serial.println(TriggerPoint);
-  Serial.print("LowPulses : ");
-  Serial.println(LowPulsesReq + 1); // Base 0 correction
-  Serial.print("FireSaftey Pulses Req : ");
-  Serial.println(FireSafetyReq + 1); // Base 0 correction
+  Serial.print("Center stick for arming Pulses : ");
+  Serial.println(CenterPulsesReq + 1); // Base 0 correction
   Serial.println();
   Serial.println("Pre Arm pulse Seq");
 
   while (StartupPulses < StartupPulsesRequired) {
     ch1 = pulseIn(RCInputPin, HIGH, 40000);
-    if ((ch1 > MinPulse) && (ch1 < TriggerPoint)) { //signal is valid and below trigger
+    if ((ch1 > CenterPointInputMin) && (ch1 < CenterPointInputMax)) { //signal is valid and in safe range
       StartupPulses++;
       if (StartupPulses % 10 == 0) {
         digitalWrite(LEDOutPin, !digitalRead(LEDOutPin));  //fast toggle LED pin during startup
