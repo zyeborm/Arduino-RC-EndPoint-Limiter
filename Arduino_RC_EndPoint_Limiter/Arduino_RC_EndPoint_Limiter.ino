@@ -5,20 +5,24 @@
 // Designed for an arduino nano, serial rate is 115200
 // fast LED flashes during startup with RX of valid signal
 // Slower LED flashes during operation with rx of valid signal
+// Limit lights operate always regardless of signal but will flash if signal is good and limiting is being applied
+// If both switches are closed output is disabled (no pulseout)
 // designed for ~50 PPS servo signals 1-2ms long
 
 #define Version 0.001
 
 // I/O setup
-#define RCInputPin 2 // pin the reciever is connected to
+#define RCInputPin 12 // pin the reciever is connected to
 #define LEDOutPin 13 // pin the status LED is connected to
+#define LowSwitchLEDPin 6 // pin the Low switch active LED is connected to
+#define HighSwitchLEDPin 6 // pin the High switch active LED is connected to
 #define RCOutputPin 4 // pin the RC pulseout is sent on
 
 //for both of these operation of the LED is enabled even without input signal, to allow for testing
 //solid on for limit switch hit
 //fast flashing for RC output enabled and a limit switch engaged
-#define SwitchHiPin    // pin for LED indicating the high switch is triggered and output is limited as a result
-#define SwitchLowPin   // pin for LED indicating the low switch is triggered and output is limited as a result
+#define SwitchHiPin 3   // pin for LED indicating the high switch is triggered and output is limited as a result
+#define SwitchLowPin 2  // pin for LED indicating the low switch is triggered and output is limited as a result
 
 
 // Tuning
@@ -40,6 +44,10 @@
 byte ValidPulseTrain = 0; //how many good pulses have we recieved
 bool SignalGood = false; // have we recieved enough good servo pulses to trust the input
 
+void SwitchLowChange() //called every time the low switch is changed, no debounce or anything on here not needed debounce is done in main loop (kinda)
+{
+  digitalWrite(LowSwitchLEDPin, !digitalRead(SwitchLowPin));
+}
 void setup() {
   //spew serial stuff identifying the state and requirements for operation
   //then wait for StartupPulsesRequired (200) pulses between MinPulse (900) and TriggerPoint (1250) before leaving the init
@@ -48,11 +56,20 @@ void setup() {
   byte zeros = 0; // stop spewing zeros at startup with no signal
 
   int ch1; // Servo input values, in microseconds so use int
+  
+  unsigned long CurrentTime = 0; //stores millis()
+  unsigned long LastTime = 0; //stores millis() used to for interval timing of slow (no signal) flash
 
-  pinMode(RCInputPin, INPUT); // Set our input pins as such
+  pinMode(SwitchLowPin, INPUT_PULLUP);
+  
+  pinMode(RCInputPin, INPUT_PULLUP); // Set our input pins as such and add a pullup in case it is disconnected from the RX
   pinMode(LEDOutPin, OUTPUT); // Set our output pins as such
+  pinMode(LowSwitchLEDPin, OUTPUT); // Set our output pins as such
+  pinMode(HighSwitchLEDPin, OUTPUT); // Set our output pins as such  
   pinMode(RCOutputPin, OUTPUT); // Set our output pins as such
-
+  
+  attachInterrupt(digitalPinToInterrupt(LowSwitchLEDPin), SwitchLowChange , CHANGE);
+  
   Serial.begin(115200); // init serial high speed to minimise time in serial though it's meant to be non blocking now 2000000
   digitalWrite(LEDOutPin, LOW);
   digitalWrite(RCOutputPin, LOW);
@@ -70,7 +87,7 @@ void setup() {
     if ((ch1 > CenterPointInputMin) && (ch1 < CenterPointInputMax)) { //signal is valid and in safe range
       StartupPulses++;
       if (StartupPulses % 10 == 0) {
-        digitalWrite(LEDOutPin, !digitalRead(LEDOutPin));  //fast toggle LED pin during startup
+        digitalWrite(LEDOutPin, !digitalRead(LEDOutPin));  //fast toggle LED pin during startup with good signal        
         Serial.print(StartupPulses);
         Serial.print("/");
         Serial.println(StartupPulsesRequired);
@@ -80,7 +97,6 @@ void setup() {
       if (ch1 == 0) {  // we get lots of zeros until the Rx has locked on
         zeros++;
         StartupPulses = 0;
-
         if (zeros % 64 == 0) {
           Serial.println("Zero input");
         }
@@ -89,6 +105,16 @@ void setup() {
         Serial.print("Bad Pulse Rx :");
         Serial.println(ch1);
       }
+      
+      // slow flash if we are in a bad signal state, might mess up (aliasing) with the fast flash but that could be usefull info anyway so wontfix
+      CurrentTime = millis();
+      if (CurrentTime - LastTime > 500) {
+        digitalWrite(LEDOutPin, !digitalRead(LEDOutPin));
+        //digitalWrite(LowSwitchLEDPin,!digitalRead(LowSwitchLEDPin));
+        digitalWrite(LowSwitchLEDPin, !digitalRead(SwitchLowPin));
+        Serial.println(CurrentTime);
+        LastTime = CurrentTime; 
+      } 
     }
   }
 
@@ -124,7 +150,7 @@ void loop() {
 
   int ch1; // Servo input values, in microseconds so use int
 
-
+/*
 
   //occasionally print status updates
   filter++;
@@ -180,4 +206,5 @@ void loop() {
     }
 
   }
+  */
 }
