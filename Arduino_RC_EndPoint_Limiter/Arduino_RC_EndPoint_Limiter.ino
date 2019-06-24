@@ -15,13 +15,13 @@
 #define RCInputPin 12 // pin the reciever is connected to
 #define LEDOutPin 13 // pin the status LED is connected to
 #define LowSwitchLEDPin 6 // pin the Low switch active LED is connected to
-#define HighSwitchLEDPin 6 // pin the High switch active LED is connected to
+#define HighSwitchLEDPin 7 // pin the High switch active LED is connected to
 #define RCOutputPin 4 // pin the RC pulseout is sent on
 
 //for both of these operation of the LED is enabled even without input signal, to allow for testing
 //solid on for limit switch hit
 //fast flashing for RC output enabled and a limit switch engaged
-#define SwitchHiPin 3   // pin for LED indicating the high switch is triggered and output is limited as a result
+#define SwitchHighPin 3   // pin for LED indicating the high switch is triggered and output is limited as a result
 #define SwitchLowPin 2  // pin for LED indicating the low switch is triggered and output is limited as a result
 
 
@@ -48,6 +48,11 @@ void SwitchLowChange() //called every time the low switch is changed, no debounc
 {
   digitalWrite(LowSwitchLEDPin, !digitalRead(SwitchLowPin));
 }
+
+void SwitchHighChange() {
+  digitalWrite(HighSwitchLEDPin, !digitalRead(SwitchHighPin));  
+}
+
 void setup() {
   //spew serial stuff identifying the state and requirements for operation
   //then wait for StartupPulsesRequired (200) pulses between MinPulse (900) and TriggerPoint (1250) before leaving the init
@@ -60,15 +65,21 @@ void setup() {
   unsigned long CurrentTime = 0; //stores millis()
   unsigned long LastTime = 0; //stores millis() used to for interval timing of slow (no signal) flash
 
-  pinMode(SwitchLowPin, INPUT_PULLUP);
+
   
   pinMode(RCInputPin, INPUT_PULLUP); // Set our input pins as such and add a pullup in case it is disconnected from the RX
-  pinMode(LEDOutPin, OUTPUT); // Set our output pins as such
+
   pinMode(LowSwitchLEDPin, OUTPUT); // Set our output pins as such
-  pinMode(HighSwitchLEDPin, OUTPUT); // Set our output pins as such  
+  pinMode(SwitchLowPin, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(SwitchLowPin), SwitchLowChange , CHANGE);
+
+  pinMode(HighSwitchLEDPin, OUTPUT);
+  pinMode(SwitchHighPin, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(SwitchHighPin), SwitchHighChange, CHANGE); 
+     
   pinMode(RCOutputPin, OUTPUT); // Set our output pins as such
   
-  attachInterrupt(digitalPinToInterrupt(LowSwitchLEDPin), SwitchLowChange , CHANGE);
+  
   
   Serial.begin(115200); // init serial high speed to minimise time in serial though it's meant to be non blocking now 2000000
   digitalWrite(LEDOutPin, LOW);
