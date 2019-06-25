@@ -18,7 +18,7 @@
 #define LEDOutPin 13 // pin the status LED is connected to
 #define LowSwitchLEDPin 6 // pin the Low switch active LED is connected to
 #define HighSwitchLEDPin 7 // pin the High switch active LED is connected to
-#define RCOutputPin 4 // pin the RC pulseout is sent on
+#define RCOutputPin 11 // pin the RC pulseout is sent on
 
 //for both of these operation of the LED is enabled even without input signal, to allow for testing
 //solid on for limit switch hit
@@ -47,6 +47,7 @@
 
 byte ValidPulseTrain = 0; //how many good pulses have we recieved
 bool SignalGood = false; // have we recieved enough good servo pulses to trust the input
+Servo OutputServo;
 
 void SwitchLowChange() //called every time the low switch is changed, no debounce or anything on here not needed debounce is done in main loop (kinda)
 {
@@ -81,8 +82,7 @@ void setup() {
   pinMode(SwitchHighPin, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(SwitchHighPin), SwitchHighChange, CHANGE); 
      
-  pinMode(RCOutputPin, OUTPUT); // Set our output pins as such
-  
+  OutputServo.attach(RCOutputPin);
   
   
   Serial.begin(115200); // init serial high speed to minimise time in serial though it's meant to be non blocking now 2000000
@@ -209,7 +209,7 @@ void loop() {
   } else {
     PulseOutVal = CenterPointInput; //if signal is bad then output default signal 
   }
-
+  OutputServo.write(PulseOutVal);
     //occasionally print status updates
   filter++;
   if (filter % FilterMod == 0) { // only print every nth time
