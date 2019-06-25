@@ -9,6 +9,8 @@
 // If both switches are closed output is disabled (no pulseout)
 // designed for ~50 PPS servo signals 1-2ms long
 
+#include <Servo.h> 
+
 #define Version 0.001
 
 // I/O setup
@@ -40,6 +42,8 @@
 #define MaxPulse 2300 // 2300 max valid signal pulse
 #define SignalLimit 10 // 10 how many good servo pulses are needed to say we have good signal. 
 #define CenterPulsesReq 100 // how many pulses between CenterPointInputMin and CenterPointInputMax are required to arm
+
+#define FilterMod 10 // Status update output Modulo division of pulse in count for output (10 = ~5Hz at 50PPS), requires pulses to operate or will only happen at the timeout rate (~.2hz)
 
 byte ValidPulseTrain = 0; //how many good pulses have we recieved
 bool SignalGood = false; // have we recieved enough good servo pulses to trust the input
@@ -134,15 +138,19 @@ void setup() {
   Serial.println("Armed");
 }
 
-void print_status(int PulseDuration, byte LowTimes, byte FireSafetyVal) {
+void print_status(int PulseDuration,int PulseOutVal,bool SwitchLow,bool SwitchHigh) {
   //prints some internal state, takes ValidPulseTrain and SignalGood from globals
 
-  Serial.print("PulseWidth : ");
+  Serial.print("InputPulseWidth : ");
   Serial.print(PulseDuration);
-  Serial.print(" : LowTime : ");
-  Serial.print(LowTimes);
-  Serial.print(" : FireSafety : ");
-  Serial.print(FireSafetyVal);
+  Serial.print(" OutputPulseWidth : ");
+  Serial.print(PulseOutVal);
+  Serial.print(" SwitchLow : ");
+  Serial.print(SwitchLow);
+  Serial.print(" SwitchHigh : ");
+  Serial.print(SwitchHigh);
+    
+  
   Serial.print(" : ValidPulseTrain : ");
   Serial.print(ValidPulseTrain);
 
@@ -154,26 +162,15 @@ void print_status(int PulseDuration, byte LowTimes, byte FireSafetyVal) {
 }
 
 void loop() {
-  static byte LowTime = 0; //Number of valid low (< TriggerPoint) pulses we have recieved
-  static byte FireSafety = 0; //require 3 high servo pulses before firing, prevent misfires
   static byte filter = 0; // used to only write out infrequently
-  static bool PreFireFlag = false; //used during prefire to ensure sequential pulses not just noise
-
+  static int PulseOutVal = 1500; // output pulse value
+  
   int ch1; // Servo input values, in microseconds so use int
-
-/*
-
-  //occasionally print status updates
-  filter++;
-  if (filter % FilterMod == 0) { // only print every nth time
-    print_status(ch1, LowTime, FireSafety);
-    if (SignalGood) {
-      digitalWrite(LEDOutPin, !digitalRead(LEDOutPin));  //slower toggle LED pin during operation with good signal
-    }
-  }
-
+  
 
   ch1 = pulseIn(RCInputPin, HIGH, 40000); // Read the pulse width of the servo, needs to be long because it spends most of it's time off.
+  
+  
   //2ms max on time * 50 pps = 100ms maximum on time per second.
 
   if ((ch1 > MinPulse) && (ch1 < MaxPulse)) {  // if signal is in range
@@ -193,29 +190,33 @@ void loop() {
   if (SignalGood) {
     //we are happy with the radio reception, do the actual processing
 
-    if ((ch1 >= TriggerPoint) && (LowTime >= 10)) { // if it's been low for a while then allow fire
-      Serial.print("PreFire! : Pulsewidth = ");
-      Serial.println(ch1);
-
-      if (FireSafety >= FireSafetyReq) { //we have had FireSafetyReq good fire pulses, watch for base 0, too many here makes a delay on firing
-        Serial.print("Fire! : Pulsewidth = ");
-        Serial.println(ch1);
-        digitalWrite(LEDOutPin, HIGH);
-        digitalWrite(ValveOutPin, HIGH);
-        delay(PulseOutTime);
-        digitalWrite(LEDOutPin, LOW);
-        digitalWrite(ValveOutPin, LOW);
-        LowTime = 0;
-        FireSafety = 0;
-      } else {
-        FireSafety++;
-      }
+    PulseOutVal = ch1; //set output to input then do the limiting later
+    
+    if ((!digitalRead(SwitchLowPin)) & (ch1 < CenterPointInput)) // minimum switch is activated and input is still driving into the switch
+    {
+      PulseOutVal = CenterPointInput; //set the output to center to prevent driving into the switch more
     }
 
-    if ((LowTime < 10) && (ch1 < TriggerPoint)) {
-      LowTime++;
+    if ((!digitalRead(SwitchHighPin)) & (ch1 > CenterPointInput)) // Maximum switch is activated and input is still driving into the switch
+    {
+      PulseOutVal = CenterPointInput; //set the output to center to prevent driving into the switch more
     }
 
+    if ((!digitalRead(SwitchHighPin) & (!digitalRead(SwitchLowPin))))
+    {
+      PulseOutVal = CenterPointInput;  // both switches are activated, something is broken.
+    }
+  } else {
+    PulseOutVal = CenterPointInput; //if signal is bad then output default signal 
   }
-  */
+
+    //occasionally print status updates
+  filter++;
+  if (filter % FilterMod == 0) { // only print every nth time
+    print_status(ch1,PulseOutVal,!digitalRead(SwitchLowPin),!digitalRead(SwitchHighPin));
+    if (SignalGood) {
+      digitalWrite(LEDOutPin, !digitalRead(LEDOutPin));  //slower toggle LED pin during operation with good signal
+    }
+  }
+
 }
