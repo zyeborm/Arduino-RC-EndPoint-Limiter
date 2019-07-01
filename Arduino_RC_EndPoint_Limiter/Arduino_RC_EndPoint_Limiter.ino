@@ -11,7 +11,7 @@
 
 #include <Servo.h> 
 
-#define Version 0.001
+#define Version 0.002
 
 // I/O setup
 #define RCInputPin 12 // pin the reciever is connected to
@@ -58,6 +58,20 @@ void SwitchHighChange() {
   digitalWrite(HighSwitchLEDPin, !digitalRead(SwitchHighPin));  
 }
 
+void setupmenu() {
+  Serial.println("Setup Menu");
+  while (true) {
+    // statement(s)
+  }
+  
+}
+
+void serialFlush(){
+  while(Serial.available() > 0) {
+    char t = Serial.read();
+  }
+}
+
 void setup() {
   //spew serial stuff identifying the state and requirements for operation
   //then wait for StartupPulsesRequired (200) pulses between MinPulse (900) and TriggerPoint (1250) before leaving the init
@@ -86,6 +100,7 @@ void setup() {
   
   
   Serial.begin(115200); // init serial high speed to minimise time in serial though it's meant to be non blocking now 2000000
+  
   digitalWrite(LEDOutPin, LOW);
   digitalWrite(RCOutputPin, LOW);
 
@@ -96,7 +111,8 @@ void setup() {
   Serial.println(CenterPulsesReq + 1); // Base 0 correction
   Serial.println();
   Serial.println("Pre Arm pulse Seq");
-
+  serialFlush(); //dump anything recieved up until now.
+  
   while (StartupPulses < StartupPulsesRequired) {
     ch1 = pulseIn(RCInputPin, HIGH, 40000);
     if ((ch1 > CenterPointInputMin) && (ch1 < CenterPointInputMax)) { //signal is valid and in safe range
@@ -109,25 +125,26 @@ void setup() {
       }
     } else {
       // invalid signal recieved
-      if (ch1 == 0) {  // we get lots of zeros until the Rx has locked on
-        zeros++;
+      zeros++;
+      if (ch1 == 0) {  // we get lots of zeros until the Rx has locked on        
         StartupPulses = 0;
         if (zeros % 64 == 0) {
-          Serial.println("Zero input");
+                  Serial.println("No Pulse Recieved);
         }
       } else {
         StartupPulses = 0;
-        Serial.print("Bad Pulse Rx :");
-        Serial.println(ch1);
+        if (zeros % 32 == 0) {        
+          Serial.print("Press S for setup : Out of safe range Pulse Rx :");
+          Serial.println(ch1);
+        }
       }
       
       // slow flash if we are in a bad signal state, might mess up (aliasing) with the fast flash but that could be usefull info anyway so wontfix
       CurrentTime = millis();
-      if (CurrentTime - LastTime > 500) {
+      if (CurrentTime - LastTime > 500) {        
         digitalWrite(LEDOutPin, !digitalRead(LEDOutPin));
         //digitalWrite(LowSwitchLEDPin,!digitalRead(LowSwitchLEDPin));
         digitalWrite(LowSwitchLEDPin, !digitalRead(SwitchLowPin));
-        Serial.println(CurrentTime);
         LastTime = CurrentTime; 
       } 
     }
