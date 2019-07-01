@@ -101,8 +101,8 @@ void setup() {
     ch1 = pulseIn(RCInputPin, HIGH, 40000);
     if ((ch1 > CenterPointInputMin) && (ch1 < CenterPointInputMax)) { //signal is valid and in safe range
       StartupPulses++;
-      if (StartupPulses % 10 == 0) {
-        digitalWrite(LEDOutPin, !digitalRead(LEDOutPin));  //fast toggle LED pin during startup with good signal        
+      if (StartupPulses % 5 == 0) {
+        digitalWrite(LEDOutPin, !digitalRead(LEDOutPin));  //Very fast toggle LED pin during startup with good signal %10 is too close to regular flashing to signal arming       
         Serial.print(StartupPulses);
         Serial.print("/");
         Serial.println(StartupPulsesRequired);
@@ -166,7 +166,7 @@ void loop() {
   static int PulseOutVal = 1500; // output pulse value
   
   int ch1; // Servo input values, in microseconds so use int
-  
+  static bool DipSignalLights = false; // If true then black out the switch signal lights to indicate good signal being inhibited, stay oposite to status LED for clarity
 
   ch1 = pulseIn(RCInputPin, HIGH, 40000); // Read the pulse width of the servo, needs to be long because it spends most of it's time off.
   
@@ -208,14 +208,20 @@ void loop() {
     }
   } else {
     PulseOutVal = CenterPointInput; //if signal is bad then output default signal 
+    digitalWrite(LowSwitchLEDPin, !digitalRead(SwitchLowPin)); //reset signal LEDs
+    digitalWrite(HighSwitchLEDPin, !digitalRead(SwitchHighPin)); //reset signal LEDs
   }
   OutputServo.write(PulseOutVal);
     //occasionally print status updates
   filter++;
+  
   if (filter % FilterMod == 0) { // only print every nth time
     print_status(ch1,PulseOutVal,!digitalRead(SwitchLowPin),!digitalRead(SwitchHighPin));
-    if (SignalGood) {
-      digitalWrite(LEDOutPin, !digitalRead(LEDOutPin));  //slower toggle LED pin during operation with good signal
+    if (SignalGood) {      
+      DipSignalLights = digitalRead(LEDOutPin);
+      digitalWrite(LEDOutPin, !DipSignalLights);  //slower toggle LED pin during operation with good signal            
+      digitalWrite(LowSwitchLEDPin, (!digitalRead(SwitchLowPin) & DipSignalLights) );
+      digitalWrite(HighSwitchLEDPin, (!digitalRead(SwitchHighPin) & DipSignalLights));
     }
   }
 
