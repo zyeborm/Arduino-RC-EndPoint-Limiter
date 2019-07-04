@@ -28,25 +28,73 @@
 
 
 // Tuning
-#define CenterPointInput 1500 // Central pulse width input
-#define CenterPointInputMin 1400 //Central pulse width input minimum value considered as centered for safety (a tollerance essentially)
-#define CenterPointInputMax 1600 //Central pulse width input maximum value considered as centered for safety (a tollerance essentially)
+//#define CenterPointInput 1500 // Central pulse width input
+//#define CenterPointInputMin 1400 //Central pulse width input minimum value considered as centered for safety (a tollerance essentially)
+//#define CenterPointInputMax 1600 //Central pulse width input maximum value considered as centered for safety (a tollerance essentially)
 
-#define MaxOutputPulse 2000 // cap output to value
-#define MinOutputPulse 1000 // cap output to value
-#define CenterOutputPulse 1500 // Central pulse width input
+//#define MaxOutputPulse 2000 // cap output to value
+//#define MinOutputPulse 1000 // cap output to value
+//#define CenterOutputPulse 1500 // Central pulse width input
 
 //Safety Stuff, has defaults first in comments
-#define StartupPulsesRequired 100 // 100 how may pulses between CenterPointInputMin and Max are needed before starting, ensures no movement when powered on
-#define MinPulse 900 // 900 min valid signal pulse
-#define MaxPulse 2300 // 2300 max valid signal pulse
-#define SignalLimit 10 // 10 how many good servo pulses are needed to say we have good signal. 
-#define CenterPulsesReq 100 // how many pulses between CenterPointInputMin and CenterPointInputMax are required to arm
+//#define StartupPulsesRequired 100 // 100 how may pulses between CenterPointInputMin and Max are needed before starting, ensures no movement when powered on
+//#define MinPulse 900 // 900 min valid signal pulse
+//#define MaxPulse 2300 // 2300 max valid signal pulse
+//#define SignalLimit 10 // 10 how many good servo pulses are needed to say we have good signal. 
+//#define CenterPulsesReq 100 // how many pulses between CenterPointInputMin and CenterPointInputMax are required to arm
 
 #define FilterMod 10 // Status update output Modulo division of pulse in count for output (10 = ~5Hz at 50PPS), requires pulses to operate or will only happen at the timeout rate (~.2hz)
 
+//holds configuration settings, defaults first in comments
+struct SettingsType {  
+  unsigned int SettingsVersion; // version of the settings config, mainly used to check for 0xFFFF IE unconfigured eeprom to load default values, also cool to see
+
+  //output limits
+  unsigned int MaxOutputPulse; // 2000 cap output to value
+  unsigned int MinOutputPulse; // 1000 cap output to value
+  unsigned int CenterOutputPulse; // 1500 Central pulse width input
+
+  //Safety Stuff
+  byte StartupPulsesRequired; // 100 how may pulses between CenterPointInputMin and Max are needed before starting, ensures no movement when powered on
+  unsigned int MinPulse; // 900 min valid signal pulse
+  unsigned int MaxPulse; // 2300 max valid signal pulse
+  byte SignalLimit; // 10 how many good servo pulses are needed to say we have good signal. 
+
+  //arming  
+  byte CenterPulsesReq; //100 how many pulses between CenterPointInputMin and CenterPointInputMax are required to arm  
+  unsigned int CenterPointInput; // 1500 Central pulse width input  
+  unsigned int CenterPointInputMin; //1000 Central pulse width input minimum value considered as centered for safety (a tollerance essentially)
+  unsigned int CenterPointInputMax; //2000 Central pulse width input maximum value considered as centered for safety (a tollerance essentially)
+};
+
+SettingsType Settings = {};
+
+void ResetSettingsDefault()
+{
+  //As settings is global no issue with passing structs, lazyness wins again.
+  //not reset, this should always come from eeprom Settings.SettingsVersion; // version of the settings config, mainly used to check for 0xFFFF IE unconfigured eeprom to load default values, also cool to see
+
+  //output limits
+  Settings.MaxOutputPulse = 2000; // 2000 cap output to value
+  Settings.MinOutputPulse = 1000; // 1000 cap output to value
+  Settings.CenterOutputPulse = 1500; // 1500 Central pulse width input
+
+  //Safety Stuff
+  Settings.StartupPulsesRequired = 100; // 100 how may pulses between CenterPointInputMin and Max are needed before starting, ensures no movement when powered on
+  Settings.MinPulse = 900; // 900 min valid signal pulse
+  Settings.MaxPulse = 2300; // 2300 max valid signal pulse
+  Settings.SignalLimit = 10; // 10 how many good servo pulses are needed to say we have good signal. 
+
+  //arming  
+  Settings.CenterPulsesReq = 100; // how many pulses between CenterPointInputMin and CenterPointInputMax are required to arm  
+  Settings.CenterPointInput = 1500; // 1500 Central pulse width input  
+  Settings.CenterPointInputMin = 1000; //1000 Central pulse width input minimum value considered as centered for safety (a tollerance essentially)
+  Settings.CenterPointInputMax = 2000; //2000 Central pulse width input maximum value considered as centered for safety (a tollerance essentially)
+}
+
 byte ValidPulseTrain = 0; //how many good pulses have we recieved
 bool SignalGood = false; // have we recieved enough good servo pulses to trust the input
+
 Servo OutputServo;
 
 void SwitchLowChange() //called every time the low switch is changed, no debounce or anything on here not needed debounce is done in main loop (kinda)
@@ -83,9 +131,9 @@ void setup() {
   
   unsigned long CurrentTime = 0; //stores millis()
   unsigned long LastTime = 0; //stores millis() used to for interval timing of slow (no signal) flash
+  int RxData = 0; //used to recieve serial data
 
-
-  
+  ResetSettingsDefault();
   pinMode(RCInputPin, INPUT_PULLUP); // Set our input pins as such and add a pullup in case it is disconnected from the RX
 
   pinMode(LowSwitchLEDPin, OUTPUT); // Set our output pins as such
@@ -108,20 +156,28 @@ void setup() {
   Serial.print("Version : ");
   Serial.println(Version);
   Serial.print("Center stick for arming Pulses : ");
-  Serial.println(CenterPulsesReq + 1); // Base 0 correction
+  Serial.println(Settings.CenterPulsesReq + 1); // Base 0 correction
   Serial.println();
   Serial.println("Pre Arm pulse Seq");
   serialFlush(); //dump anything recieved up until now.
   
-  while (StartupPulses < StartupPulsesRequired) {
+  while (StartupPulses < Settings.StartupPulsesRequired) {
+    if (Serial.available() > 0) {
+      // read the incoming byte:
+      RxData = Serial.read();
+      if( RxData == 83) {
+        setupmenu();
+      }
+    }
+            
     ch1 = pulseIn(RCInputPin, HIGH, 40000);
-    if ((ch1 > CenterPointInputMin) && (ch1 < CenterPointInputMax)) { //signal is valid and in safe range
+    if ((ch1 > Settings.CenterPointInputMin) && (ch1 < Settings.CenterPointInputMax)) { //signal is valid and in safe range
       StartupPulses++;
       if (StartupPulses % 5 == 0) {
         digitalWrite(LEDOutPin, !digitalRead(LEDOutPin));  //Very fast toggle LED pin during startup with good signal %10 is too close to regular flashing to signal arming       
         Serial.print(StartupPulses);
         Serial.print("/");
-        Serial.println(StartupPulsesRequired);
+        Serial.println(Settings.StartupPulsesRequired);
       }
     } else {
       // invalid signal recieved
@@ -129,7 +185,7 @@ void setup() {
       if (ch1 == 0) {  // we get lots of zeros until the Rx has locked on        
         StartupPulses = 0;
         if (zeros % 64 == 0) {
-                  Serial.println("No Pulse Recieved);
+                  Serial.println("No Pulse Recieved");
         }
       } else {
         StartupPulses = 0;
@@ -150,7 +206,7 @@ void setup() {
     }
   }
 
-  ValidPulseTrain = SignalLimit; // I mean you would hope so
+  ValidPulseTrain = Settings.SignalLimit; // I mean you would hope so
   SignalGood = true;
   Serial.println("Armed");
 }
@@ -190,8 +246,8 @@ void loop() {
   
   //2ms max on time * 50 pps = 100ms maximum on time per second.
 
-  if ((ch1 > MinPulse) && (ch1 < MaxPulse)) {  // if signal is in range
-    if (ValidPulseTrain < SignalLimit) {      // and if we are recovering from a bad pulse
+  if ((ch1 > Settings.MinPulse) && (ch1 < Settings.MaxPulse)) {  // if signal is in range
+    if (ValidPulseTrain < Settings.SignalLimit) {      // and if we are recovering from a bad pulse
       ValidPulseTrain++;                    // then add one to the valid pulse train
     }
   } else {
@@ -209,22 +265,22 @@ void loop() {
 
     PulseOutVal = ch1; //set output to input then do the limiting later
     
-    if ((!digitalRead(SwitchLowPin)) & (ch1 < CenterPointInput)) // minimum switch is activated and input is still driving into the switch
+    if ((!digitalRead(SwitchLowPin)) & (ch1 < Settings.CenterOutputPulse)) // minimum switch is activated and input is still driving into the switch
     {
-      PulseOutVal = CenterPointInput; //set the output to center to prevent driving into the switch more
+      PulseOutVal = Settings.CenterOutputPulse; //set the output to center to prevent driving into the switch more
     }
 
-    if ((!digitalRead(SwitchHighPin)) & (ch1 > CenterPointInput)) // Maximum switch is activated and input is still driving into the switch
+    if ((!digitalRead(SwitchHighPin)) & (ch1 > Settings.CenterOutputPulse)) // Maximum switch is activated and input is still driving into the switch
     {
-      PulseOutVal = CenterPointInput; //set the output to center to prevent driving into the switch more
+      PulseOutVal = Settings.CenterOutputPulse; //set the output to center to prevent driving into the switch more
     }
 
     if ((!digitalRead(SwitchHighPin) & (!digitalRead(SwitchLowPin))))
     {
-      PulseOutVal = CenterPointInput;  // both switches are activated, something is broken.
+      PulseOutVal = Settings.CenterOutputPulse;  // both switches are activated, something is broken.
     }
   } else {
-    PulseOutVal = CenterPointInput; //if signal is bad then output default signal 
+    PulseOutVal = Settings.CenterOutputPulse; //if signal is bad then output default signal 
     digitalWrite(LowSwitchLEDPin, !digitalRead(SwitchLowPin)); //reset signal LEDs
     digitalWrite(HighSwitchLEDPin, !digitalRead(SwitchHighPin)); //reset signal LEDs
   }
