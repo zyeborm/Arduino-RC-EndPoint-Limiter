@@ -10,6 +10,7 @@
 // designed for ~50 PPS servo signals 1-2ms long
 
 #include <Servo.h> 
+#include <EEPROM.h>
 
 #define Version 0.002
 
@@ -88,8 +89,29 @@ void ResetSettingsDefault()
   //arming  
   Settings.CenterPulsesReq = 100; // how many pulses between CenterPointInputMin and CenterPointInputMax are required to arm  
   Settings.CenterPointInput = 1500; // 1500 Central pulse width input  
-  Settings.CenterPointInputMin = 1000; //1000 Central pulse width input minimum value considered as centered for safety (a tollerance essentially)
-  Settings.CenterPointInputMax = 2000; //2000 Central pulse width input maximum value considered as centered for safety (a tollerance essentially)
+  Settings.CenterPointInputMin = 1400; //1000 Central pulse width input minimum value considered as centered for safety (a tollerance essentially)
+  Settings.CenterPointInputMax = 1600; //2000 Central pulse width input maximum value considered as centered for safety (a tollerance essentially)
+}
+void SaveSettings()
+{
+  
+}
+void ReadSettings()
+{
+  //read settings from eeprom, filling with defaults if eeprom is blank (0xff) or it appears corrupt
+  //just adding all the bytes individually allowing it to rollover and making a checksum at the end
+  Serial.println("Reading eeprom");
+  EEPROM.get(1, Settings ); //start eeprom at 1 just in case we want 0 for something like an eeprom data format indication
+  Serial.print("Got settings version :");
+  Serial.println(Settings.SettingsVersion);
+  if (Settings.SettingsVersion == 65535) 
+  {
+    //Settings is blank (or has been written 65534 times which is really getting up there
+    Serial.println("Settings version indicates blank, setting settings to default");
+    ResetSettingsDefault();
+  }
+    
+  
 }
 
 byte ValidPulseTrain = 0; //how many good pulses have we recieved
@@ -133,7 +155,7 @@ void setup() {
   unsigned long LastTime = 0; //stores millis() used to for interval timing of slow (no signal) flash
   int RxData = 0; //used to recieve serial data
 
-  ResetSettingsDefault();
+  //ResetSettingsDefault();
   pinMode(RCInputPin, INPUT_PULLUP); // Set our input pins as such and add a pullup in case it is disconnected from the RX
 
   pinMode(LowSwitchLEDPin, OUTPUT); // Set our output pins as such
@@ -155,6 +177,8 @@ void setup() {
   Serial.println("End point limiter starting");
   Serial.print("Version : ");
   Serial.println(Version);
+
+  ReadSettings();
   Serial.print("Center stick for arming Pulses : ");
   Serial.println(Settings.CenterPulsesReq + 1); // Base 0 correction
   Serial.println();
@@ -280,7 +304,7 @@ void loop() {
       PulseOutVal = Settings.CenterOutputPulse;  // both switches are activated, something is broken.
     }
   } else {
-    PulseOutVal = Settings.CenterOutputPulse; //if signal is bad then output default signal 
+    PulseOutVal = Settings.CenterOutputPulse; //if signal is bad then output default signal     
     digitalWrite(LowSwitchLEDPin, !digitalRead(SwitchLowPin)); //reset signal LEDs
     digitalWrite(HighSwitchLEDPin, !digitalRead(SwitchHighPin)); //reset signal LEDs
   }
