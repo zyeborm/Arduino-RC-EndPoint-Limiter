@@ -175,13 +175,13 @@ void setup() {
   digitalWrite(RCOutputPin, LOW);
 
   Serial.println("End point limiter starting");
-  Serial.print("Version : ");
-  Serial.println(Version);
+  Serial.println((String)"Version : " + Version);
+  //Serial.println(Version);
 
   ReadSettings();
-  Serial.print("Center stick for arming Pulses : ");
-  Serial.println(Settings.CenterPulsesReq + 1); // Base 0 correction
-  Serial.println();
+  Serial.println((String)"Center stick for arming Pulses : " + (Settings.CenterPulsesReq)); 
+  //Serial.println(); 
+  //Serial.println();
   Serial.println("Pre Arm pulse Seq");
   serialFlush(); //dump anything recieved up until now.
   
@@ -199,9 +199,9 @@ void setup() {
       StartupPulses++;
       if (StartupPulses % 5 == 0) {
         digitalWrite(LEDOutPin, !digitalRead(LEDOutPin));  //Very fast toggle LED pin during startup with good signal %10 is too close to regular flashing to signal arming       
-        Serial.print(StartupPulses);
-        Serial.print("/");
-        Serial.println(Settings.StartupPulsesRequired);
+        Serial.println((String) "Press S for setup : Valid Pulses Rx : " + StartupPulses + "/" + Settings.StartupPulsesRequired);
+        //Serial.print("/");
+        //Serial.println(Settings.StartupPulsesRequired);
       }
     } else {
       // invalid signal recieved
@@ -214,7 +214,7 @@ void setup() {
       } else {
         StartupPulses = 0;
         if (zeros % 32 == 0) {        
-          Serial.print("Press S for setup : Out of safe range Pulse Rx :");
+          Serial.print("Press S for setup : Out of safe range Pulse Rx : ");
           Serial.println(ch1);
         }
       }
@@ -245,9 +245,7 @@ void print_status(int PulseDuration,int PulseOutVal,bool SwitchLow,bool SwitchHi
   Serial.print(" SwitchLow : ");
   Serial.print(SwitchLow);
   Serial.print(" SwitchHigh : ");
-  Serial.print(SwitchHigh);
-    
-  
+  Serial.print(SwitchHigh);     
   Serial.print(" : ValidPulseTrain : ");
   Serial.print(ValidPulseTrain);
 
