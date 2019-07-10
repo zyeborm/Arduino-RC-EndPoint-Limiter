@@ -28,25 +28,11 @@
 #define SwitchLowPin 2  // pin for LED indicating the low switch is triggered and output is limited as a result
 
 
-// Tuning
-//#define CenterPointInput 1500 // Central pulse width input
-//#define CenterPointInputMin 1400 //Central pulse width input minimum value considered as centered for safety (a tollerance essentially)
-//#define CenterPointInputMax 1600 //Central pulse width input maximum value considered as centered for safety (a tollerance essentially)
-
-//#define MaxOutputPulse 2000 // cap output to value
-//#define MinOutputPulse 1000 // cap output to value
-//#define CenterOutputPulse 1500 // Central pulse width input
-
-//Safety Stuff, has defaults first in comments
-//#define StartupPulsesRequired 100 // 100 how may pulses between CenterPointInputMin and Max are needed before starting, ensures no movement when powered on
-//#define MinPulse 900 // 900 min valid signal pulse
-//#define MaxPulse 2300 // 2300 max valid signal pulse
-//#define SignalLimit 10 // 10 how many good servo pulses are needed to say we have good signal. 
-//#define CenterPulsesReq 100 // how many pulses between CenterPointInputMin and CenterPointInputMax are required to arm
-
 #define FilterMod 10 // Status update output Modulo division of pulse in count for output (10 = ~5Hz at 50PPS), requires pulses to operate or will only happen at the timeout rate (~.2hz)
 
 //holds configuration settings, defaults first in comments
+
+#define SettingsTypeVersion 1 //Increment this when changing the struct, this is compared with byte 0 if it's different (IE new struct format) defaults are loaded instead.
 struct SettingsType {  
   unsigned int SettingsVersion; // version of the settings config, mainly used to check for 0xFFFF IE unconfigured eeprom to load default values, also cool to see
 
@@ -60,7 +46,8 @@ struct SettingsType {
   unsigned int MinPulse; // 900 min valid signal pulse
   unsigned int MaxPulse; // 2300 max valid signal pulse
   byte SignalLimit; // 10 how many good servo pulses are needed to say we have good signal. 
-
+  bool DisableOutputOnBadSignal; //True Disable output if bad/invalid signal for a while, will output a CenterOutputPulse first to zero the output sooner.
+  
   //arming  
   byte CenterPulsesReq; //100 how many pulses between CenterPointInputMin and CenterPointInputMax are required to arm  
   unsigned int CenterPointInput; // 1500 Central pulse width input  
@@ -85,6 +72,7 @@ void ResetSettingsDefault()
   Settings.MinPulse = 900; // 900 min valid signal pulse
   Settings.MaxPulse = 2300; // 2300 max valid signal pulse
   Settings.SignalLimit = 10; // 10 how many good servo pulses are needed to say we have good signal. 
+  Settings.DisableOutputOnBadSignal = true;
 
   //arming  
   Settings.CenterPulsesReq = 100; // how many pulses between CenterPointInputMin and CenterPointInputMax are required to arm  
@@ -100,19 +88,64 @@ void ReadSettings()
 {
   //read settings from eeprom, filling with defaults if eeprom is blank (0xff) or it appears corrupt
   //just adding all the bytes individually allowing it to rollover and making a checksum at the end
-  Serial.println("Reading eeprom");
-  EEPROM.get(1, Settings ); //start eeprom at 1 just in case we want 0 for something like an eeprom data format indication
-  Serial.print("Got settings version :");
-  Serial.println(Settings.SettingsVersion);
-  if (Settings.SettingsVersion == 65535) 
-  {
-    //Settings is blank (or has been written 65534 times which is really getting up there
-    Serial.println("Settings version indicates blank, setting settings to default");
-    ResetSettingsDefault();
+  //bool SettingsTypeVersionCode = 0; // local var for the eeprom read
+  if (EEPROM.read(0) == SettingsTypeVersion) //struct matches
+  {    
+
+    Serial.println("Reading eeprom");    
+    EEPROM.get(1, Settings ); //start eeprom at 1 to give room for data format indication
+    Serial.print("Got settings version :");
+    Serial.println(Settings.SettingsVersion);
+    if (Settings.SettingsVersion == 65535) 
+    {
+      //Settings is blank (or has been written 65534 times which is really getting up there
+      Serial.println("Settings version indicates blank, setting settings to default");
+      ResetSettingsDefault();
+    }
+  } else {
+      Serial.println("Data storage version mismatch, setting settings to default");
+      ResetSettingsDefault();
   }
-    
   
 }
+
+
+void setupmenu() {
+  SettingsType SettingsBuffer = {}; //buffers settings 
+  SettingsType SettingsDefault = {}; //holds the default values
+  unsigned int val = 0;
+  
+  //fill SettingsDefault with defaults by copying the actual values to the buffer, resetting then copying back
+  // it's a hack because settings is global
+  SettingsBuffer = Settings;
+  ResetSettingsDefault();
+  SettingsDefault = Settings;
+  Settings = SettingsBuffer;
+
+  
+
+  Serial.println("Setup Menu");
+  Serial.println("Enter 0 to accept the current value (first value) 1 for the default value or enter a new value");  
+  Serial.println("0 [current value] 1 [default value]");  
+  Serial.setTimeout(60000);
+  while (true) {
+    // statement(s)
+    Serial.println("Setup Menu");
+    Serial.println("Max Output Pulse");
+    //Serial.println((String)"0 [" + Settings.MaxOutputPulse + "] 1 ["+ SettingsDefault.MaxOutputPulse +"]");
+    val = Serial.parseInt();
+    //Serial.println((String)" Set to : " + val);
+    
+  }
+  
+}
+
+void serialFlush(){
+  while(Serial.available() > 0) {
+    char t = Serial.read();
+  }
+}
+
 
 byte ValidPulseTrain = 0; //how many good pulses have we recieved
 bool SignalGood = false; // have we recieved enough good servo pulses to trust the input
@@ -126,20 +159,6 @@ void SwitchLowChange() //called every time the low switch is changed, no debounc
 
 void SwitchHighChange() {
   digitalWrite(HighSwitchLEDPin, !digitalRead(SwitchHighPin));  
-}
-
-void setupmenu() {
-  Serial.println("Setup Menu");
-  while (true) {
-    // statement(s)
-  }
-  
-}
-
-void serialFlush(){
-  while(Serial.available() > 0) {
-    char t = Serial.read();
-  }
 }
 
 void setup() {
