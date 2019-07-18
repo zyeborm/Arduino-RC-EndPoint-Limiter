@@ -50,7 +50,7 @@ struct SettingsType {
   
   //arming  
   byte CenterPulsesReq; //100 how many pulses between CenterPointInputMin and CenterPointInputMax are required to arm  
-  unsigned int CenterPointInput; // 1500 Central pulse width input  
+  //unsigned int CenterPointInput; // 1500 Central pulse width input  
   unsigned int CenterPointInputMin; //1000 Central pulse width input minimum value considered as centered for safety (a tollerance essentially)
   unsigned int CenterPointInputMax; //2000 Central pulse width input maximum value considered as centered for safety (a tollerance essentially)
 };
@@ -65,7 +65,7 @@ void ResetSettingsDefault()
   //output limits
   Settings.MaxOutputPulse = 2000; // 2000 cap output to value
   Settings.MinOutputPulse = 1000; // 1000 cap output to value
-  Settings.CenterOutputPulse = 1500; // 1500 Central pulse width input
+  Settings.CenterOutputPulse = 1500; // 1500 Central pulse width output, used to put out "zero" to the controller, tune this for no motion
 
   //Safety Stuff
   Settings.StartupPulsesRequired = 100; // 100 how may pulses between CenterPointInputMin and Max are needed before starting, ensures no movement when powered on
@@ -76,20 +76,47 @@ void ResetSettingsDefault()
 
   //arming  
   Settings.CenterPulsesReq = 100; // how many pulses between CenterPointInputMin and CenterPointInputMax are required to arm  
-  Settings.CenterPointInput = 1500; // 1500 Central pulse width input  
+  //Settings.CenterPointInput = 1500; // 1500 Central pulse width input  
   Settings.CenterPointInputMin = 1400; //1000 Central pulse width input minimum value considered as centered for safety (a tollerance essentially)
   Settings.CenterPointInputMax = 1600; //2000 Central pulse width input maximum value considered as centered for safety (a tollerance essentially)
 }
+void PowerCycleCounter()
+{
+   //increments and displays the power cycle counter
+   //only good for 100,000 power cycles  Oh No!
+   unsigned long PowerCycles = 0; 
+   EEPROM.get(500,PowerCycles);
+   PowerCycles += 1;
+   Serial.print(F("Power Cycle Counter : "));   
+   Serial.println(PowerCycles);
+   EEPROM.put(500,PowerCycles);   
+}
 void SaveSettings()
 {
+  Serial.println(F("Writing EEPROM"));    
+  EEPROM.write(0, SettingsTypeVersion);
+  if (Settings.SettingsVersion >= 65534) 
+  {
+    //Settings is blank (or has been written 65534 times which is really getting up there
+    Serial.println(F("Settings version indicates blank or a 65 thousand damn writes, rolling over"));
+    Settings.SettingsVersion = 0;
+    
+  }
+
+  Settings.SettingsVersion += 1; //increment settings version then check for rollover for some reason
   
+  Serial.print(F("Writing settings version : "));    
+  Serial.println(Settings.SettingsVersion);
+  
+  EEPROM.put(1, Settings ); //start eeprom at 1 to give room for data format indication  
+  Serial.println(F("EEPROM written"));
 }
 void ReadSettings()
 {
   //read settings from eeprom, filling with defaults if eeprom is blank (0xff) or it appears corrupt
   //just adding all the bytes individually allowing it to rollover and making a checksum at the end
   //bool SettingsTypeVersionCode = 0; // local var for the eeprom read
-  if (EEPROM.read(0) == SettingsTypeVersion) //struct matches
+  if (EEPROM.read(0) == SettingsTypeVersion) //struct matches our data storage type
   {    
 
     Serial.println("Reading eeprom");    
@@ -109,11 +136,50 @@ void ReadSettings()
   
 }
 
+unsigned int IntegerSettingsSelection(unsigned int CurrentValue, unsigned int DefaultValue) { 
+  //prints the setting string without using string, only use for unsigned int
+  //then processes the return value
+  unsigned int val = 0;  
+  Serial.print("0 [");
+  Serial.print(CurrentValue);
+  Serial.print("] 1 [");
+  Serial.print(DefaultValue);
+  Serial.print("] : ");
+  val = Serial.parseInt();
+  switch (val) {
+    case 0: //use current
+      return CurrentValue;
+      break;
+
+    case 1: //use default
+      return DefaultValue;
+      break;
+    
+    default: //user has entered a value
+      return val;
+    break;
+    
+  }
+}
+
+bool YesNoInput() {
+  //loop waiting for a Y or N input, this doesn't wait for a /r/n or anything so be careful
+  while (true) 
+  {      
+    char val = Serial.read();
+    if (val == 121) {
+       return true;
+    }
+    if (val == 110) {
+       return false;       
+    }
+  }
+}      
 
 void setupmenu() {
   SettingsType SettingsBuffer = {}; //buffers settings 
   SettingsType SettingsDefault = {}; //holds the default values
-  unsigned int val = 0;
+
   
   //fill SettingsDefault with defaults by copying the actual values to the buffer, resetting then copying back
   // it's a hack because settings is global
@@ -124,17 +190,133 @@ void setupmenu() {
 
   
 
-  Serial.println("Setup Menu");
-  Serial.println("Enter 0 to accept the current value (first value) 1 for the default value or enter a new value");  
-  Serial.println("0 [current value] 1 [default value]");  
+  Serial.println(F("Setup Menu"));
+  Serial.println(F("Enter 0 to accept the current value (first value) 1 for the default value or enter a new value"));  
+  Serial.println(F("0 [current value] 1 [default value]"));  
   Serial.setTimeout(60000);
   while (true) {
-    // statement(s)
-    Serial.println("Setup Menu");
-    Serial.println("Max Output Pulse");
-    //Serial.println((String)"0 [" + Settings.MaxOutputPulse + "] 1 ["+ SettingsDefault.MaxOutputPulse +"]");
-    val = Serial.parseInt();
-    //Serial.println((String)" Set to : " + val);
+    Serial.println(F("Output Settings"));
+    Serial.print(F("Max Output Pulse                : "));
+    SettingsBuffer.MaxOutputPulse = IntegerSettingsSelection(Settings.MaxOutputPulse,SettingsDefault.MaxOutputPulse);
+    Serial.println(SettingsBuffer.MaxOutputPulse);
+
+    Serial.print(F("Min Output Pulse                : "));
+    SettingsBuffer.MinOutputPulse = IntegerSettingsSelection(Settings.MinOutputPulse,SettingsDefault.MinOutputPulse);
+    Serial.println(SettingsBuffer.MinOutputPulse);
+
+  
+    //Settings.CenterOutputPulse = 1500; // 1500 Central pulse width input
+    Serial.print(F("Center Output Pulse             : "));
+    SettingsBuffer.CenterOutputPulse = IntegerSettingsSelection(Settings.CenterOutputPulse,SettingsDefault.CenterOutputPulse);
+    Serial.println(SettingsBuffer.CenterOutputPulse);
+
+  //Safety Stuff
+    Serial.println(F("Safety Settings"));
+  //Settings.StartupPulsesRequired = 100; // 100 how may pulses between CenterPointInputMin and Max are needed before starting, ensures no movement when powered on
+    Serial.print(F("Startup Pulses Required         : "));
+    SettingsBuffer.StartupPulsesRequired = IntegerSettingsSelection(Settings.StartupPulsesRequired,SettingsDefault.StartupPulsesRequired);
+    Serial.println(SettingsBuffer.StartupPulsesRequired);
+
+  //Settings.MinPulse = 900; // 900 min valid signal pulse
+    Serial.print(F("Min Input Pulse                 : "));
+    SettingsBuffer.MinPulse = IntegerSettingsSelection(Settings.MinPulse,SettingsDefault.MinPulse);
+    Serial.println(SettingsBuffer.MinPulse);
+
+  //Settings.MaxPulse = 2300; // 2300 max valid signal pulse
+    Serial.print(F("Max Input Pulse                 : "));
+    SettingsBuffer.MaxPulse = IntegerSettingsSelection(Settings.MaxPulse,SettingsDefault.MaxPulse);
+    Serial.println(SettingsBuffer.MaxPulse);
+
+  //Settings.SignalLimit = 10; // 10 how many good servo pulses are needed to say we have good signal. 
+    Serial.print(F("Good Signal Minimum             : "));
+    SettingsBuffer.SignalLimit = IntegerSettingsSelection(Settings.SignalLimit,SettingsDefault.SignalLimit);
+    Serial.println(SettingsBuffer.SignalLimit);
+
+  //arming  
+    Serial.println(F("Arming Settings"));  
+  //Settings.CenterPulsesReq = 100; // how many pulses between CenterPointInputMin and CenterPointInputMax are required to arm  
+    Serial.print(F("Center Pulses Required           : "));
+    SettingsBuffer.CenterPulsesReq = IntegerSettingsSelection(Settings.CenterPulsesReq,SettingsDefault.CenterPulsesReq);
+    Serial.println(SettingsBuffer.CenterPulsesReq);
+
+//  Settings.CenterPointInput = 1500; // 1500 Central pulse width input  
+//    Serial.print("Min Output Pulse                 : "));
+//    SettingsBuffer.MinOutputPulse = IntegerSettingsSelection(Settings.MinOutputPulse,SettingsDefault.MinOutputPulse);
+//    Serial.println(SettingsBuffer.MinOutputPulse);
+
+  //Settings.CenterPointInputMin = 1400; //1000 Central pulse width input minimum value considered as centered for safety (a tollerance essentially)
+    Serial.print(F("Startup Input Minimum            : "));
+    SettingsBuffer.CenterPointInputMin = IntegerSettingsSelection(Settings.CenterPointInputMin,SettingsDefault.CenterPointInputMin);
+    Serial.println(SettingsBuffer.CenterPointInputMin);
+
+    //Settings.CenterPointInputMax = 1600;    
+    Serial.print(F("Startup Input Maxumum            : "));
+    SettingsBuffer.CenterPointInputMax = IntegerSettingsSelection(Settings.CenterPointInputMax,SettingsDefault.CenterPointInputMax);
+    Serial.println(SettingsBuffer.CenterPointInputMax);
+    
+    Serial.println("");
+  //Settings.DisableOutputOnBadSignal = true;
+    Serial.print(F("Disable Output On Bad Signal y/n : "));
+    SettingsBuffer.DisableOutputOnBadSignal = YesNoInput();
+    
+    if (SettingsBuffer.DisableOutputOnBadSignal) {
+      Serial.println("Y");
+    } else {
+      Serial.println("N");
+    } 
+    
+    Serial.println(F("***************************************************"));
+    Serial.println(F("******************Check Settings*******************"));
+    Serial.print(F("Max Output Pulse                 : "));
+    Serial.println(SettingsBuffer.MaxOutputPulse);
+
+    Serial.print(F("Min Output Pulse                 : "));
+    Serial.println(SettingsBuffer.MinOutputPulse);
+  
+    Serial.print(F("Center Output Pulse              : "));
+    Serial.println(SettingsBuffer.CenterOutputPulse);
+
+    Serial.print(F("Startup Pulses Required          : "));
+    Serial.println(SettingsBuffer.StartupPulsesRequired);
+
+    Serial.print(F("Min Input Pulse                  : "));
+    Serial.println(SettingsBuffer.MinPulse);
+
+    Serial.print(F("Max Input Pulse                  : "));
+    Serial.println(SettingsBuffer.MaxPulse);
+
+    Serial.print(F("Good Signal Minimum              : "));
+    Serial.println(SettingsBuffer.SignalLimit);
+
+    Serial.print(F("Center Pulses Required           : "));
+    Serial.println(SettingsBuffer.CenterPulsesReq);
+
+    Serial.print(F("Startup Input Minimum            : "));
+    Serial.println(SettingsBuffer.CenterPointInputMin);
+
+    Serial.print(F("Startup Input Maxumum            : "));
+    Serial.println(SettingsBuffer.CenterPointInputMax);
+    
+    Serial.print(F("Disable Output On Bad Signal y/n : "));
+    if (SettingsBuffer.DisableOutputOnBadSignal) {
+      Serial.println("Y");
+    } else {
+      Serial.println("N");
+    }    
+
+    delay(500);
+    serialFlush();
+    Serial.println(F("Accept settings? y/n"));
+    delay(250);
+    serialFlush();    
+    if (YesNoInput()) 
+    {
+      Settings = SettingsBuffer;
+      SaveSettings();
+      break;
+    } else {
+      Serial.println(F("Restarting, powercycle to exit"));
+    }
     
   }
   
@@ -193,15 +375,16 @@ void setup() {
   digitalWrite(LEDOutPin, LOW);
   digitalWrite(RCOutputPin, LOW);
 
-  Serial.println("End point limiter starting");
+  Serial.println(F("End point limiter starting"));
   Serial.println((String)"Version : " + Version);
-  //Serial.println(Version);
-
+ 
+  PowerCycleCounter();
   ReadSettings();
-  Serial.println((String)"Center stick for arming Pulses : " + (Settings.CenterPulsesReq)); 
+  
+  Serial.println((String)F("Center stick for arming Pulses : ") + (Settings.CenterPulsesReq)); 
   //Serial.println(); 
   //Serial.println();
-  Serial.println("Pre Arm pulse Seq");
+  Serial.println(F("Pre Arm pulse Seq"));
   serialFlush(); //dump anything recieved up until now.
   
   while (StartupPulses < Settings.StartupPulsesRequired) {
@@ -218,7 +401,7 @@ void setup() {
       StartupPulses++;
       if (StartupPulses % 5 == 0) {
         digitalWrite(LEDOutPin, !digitalRead(LEDOutPin));  //Very fast toggle LED pin during startup with good signal %10 is too close to regular flashing to signal arming       
-        Serial.println((String) "Press S for setup : Valid Pulses Rx : " + StartupPulses + "/" + Settings.StartupPulsesRequired);
+        Serial.println((String) F("Press S for setup : Valid Pulses Rx : ") + StartupPulses + "/" + Settings.StartupPulsesRequired);
         //Serial.print("/");
         //Serial.println(Settings.StartupPulsesRequired);
       }
@@ -233,7 +416,7 @@ void setup() {
       } else {
         StartupPulses = 0;
         if (zeros % 32 == 0) {        
-          Serial.print("Press S for setup : Out of safe range Pulse Rx : ");
+          Serial.print(F("Press S for setup : Out of safe range Pulse Rx : "));
           Serial.println(ch1);
         }
       }
@@ -251,12 +434,12 @@ void setup() {
 
   ValidPulseTrain = Settings.SignalLimit; // I mean you would hope so
   SignalGood = true;
-  Serial.println("Armed");
+  Serial.println(F("Armed"));
 }
 
 void print_status(int PulseDuration,int PulseOutVal,bool SwitchLow,bool SwitchHigh) {
   //prints some internal state, takes ValidPulseTrain and SignalGood from globals
-
+  //not using F() in here to keep it faster
   Serial.print("InputPulseWidth : ");
   Serial.print(PulseDuration);
   Serial.print(" OutputPulseWidth : ");
