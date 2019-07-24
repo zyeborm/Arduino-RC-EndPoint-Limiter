@@ -6,19 +6,24 @@
 // fast LED flashes during startup with RX of valid signal
 // Slower LED flashes during operation with rx of valid signal
 // Limit lights operate always regardless of signal but will flash if signal is good and limiting is being applied
-// If both switches are closed output is disabled (no pulseout)
+// If both switches are closed output is set to CenterOutputPulse
 // designed for ~50 PPS servo signals 1-2ms long
+
+
+//Settings struct version info stored at location 0
+//settings struct stored starting at location 1
+//Power cycle counter (unsigned long) is stored at eeprom 500
 
 #include <Servo.h> 
 #include <EEPROM.h>
 
-#define Version 0.002
+#define Version 0.03
 
 // I/O setup
 #define RCInputPin 12 // pin the reciever is connected to
 #define LEDOutPin 13 // pin the status LED is connected to
 #define LowSwitchLEDPin 6 // pin the Low switch active LED is connected to
-#define HighSwitchLEDPin 7 // pin the High switch active LED is connected to
+#define HighSwitchLEDPin 8 // pin the High switch active LED is connected to
 #define RCOutputPin 11 // pin the RC pulseout is sent on
 
 //for both of these operation of the LED is enabled even without input signal, to allow for testing
@@ -31,15 +36,22 @@
 #define FilterMod 10 // Status update output Modulo division of pulse in count for output (10 = ~5Hz at 50PPS), requires pulses to operate or will only happen at the timeout rate (~.2hz)
 
 //holds configuration settings, defaults first in comments
-
 #define SettingsTypeVersion 1 //Increment this when changing the struct, this is compared with byte 0 if it's different (IE new struct format) defaults are loaded instead.
+
+//globals
+byte ValidPulseTrain = 0; //how many good pulses have we recieved
+bool SignalGood = false; // have we recieved enough good servo pulses to trust the input
+Servo OutputServo;
+//Settings is global and is defined after the struct SettingsType.
+
+
 struct SettingsType {  
   unsigned int SettingsVersion; // version of the settings config, mainly used to check for 0xFFFF IE unconfigured eeprom to load default values, also cool to see
 
   //output limits
   unsigned int MaxOutputPulse; // 2000 cap output to value
   unsigned int MinOutputPulse; // 1000 cap output to value
-  unsigned int CenterOutputPulse; // 1500 Central pulse width input
+  unsigned int CenterOutputPulse; // 1500 Central pulse width output
 
   //Safety Stuff
   byte StartupPulsesRequired; // 100 how may pulses between CenterPointInputMin and Max are needed before starting, ensures no movement when powered on
@@ -49,18 +61,16 @@ struct SettingsType {
   bool DisableOutputOnBadSignal; //True Disable output if bad/invalid signal for a while, will output a CenterOutputPulse first to zero the output sooner.
   
   //arming  
-  byte CenterPulsesReq; //100 how many pulses between CenterPointInputMin and CenterPointInputMax are required to arm  
-  //unsigned int CenterPointInput; // 1500 Central pulse width input  
+  byte CenterPulsesReq; //100 how many pulses between CenterPointInputMin and CenterPointInputMax are required to arm
   unsigned int CenterPointInputMin; //1000 Central pulse width input minimum value considered as centered for safety (a tollerance essentially)
   unsigned int CenterPointInputMax; //2000 Central pulse width input maximum value considered as centered for safety (a tollerance essentially)
 };
-
 SettingsType Settings = {};
+
 
 void ResetSettingsDefault()
 {
   //As settings is global no issue with passing structs, lazyness wins again.
-  //not reset, this should always come from eeprom Settings.SettingsVersion; // version of the settings config, mainly used to check for 0xFFFF IE unconfigured eeprom to load default values, also cool to see
 
   //output limits
   Settings.MaxOutputPulse = 2000; // 2000 cap output to value
@@ -76,14 +86,13 @@ void ResetSettingsDefault()
 
   //arming  
   Settings.CenterPulsesReq = 100; // how many pulses between CenterPointInputMin and CenterPointInputMax are required to arm  
-  //Settings.CenterPointInput = 1500; // 1500 Central pulse width input  
   Settings.CenterPointInputMin = 1400; //1000 Central pulse width input minimum value considered as centered for safety (a tollerance essentially)
   Settings.CenterPointInputMax = 1600; //2000 Central pulse width input maximum value considered as centered for safety (a tollerance essentially)
 }
 void PowerCycleCounter()
 {
    //increments and displays the power cycle counter
-   //only good for 100,000 power cycles  Oh No!
+   //only good for 100,000 power cycles before the eeprom wears out Oh No!
    unsigned long PowerCycles = 0; 
    EEPROM.get(500,PowerCycles);
    PowerCycles += 1;
@@ -91,6 +100,7 @@ void PowerCycleCounter()
    Serial.println(PowerCycles);
    EEPROM.put(500,PowerCycles);   
 }
+
 void SaveSettings()
 {
   Serial.println(F("Writing EEPROM"));    
@@ -103,7 +113,7 @@ void SaveSettings()
     
   }
 
-  Settings.SettingsVersion += 1; //increment settings version then check for rollover for some reason
+  Settings.SettingsVersion += 1; //increment settings version, don't bother checking for rollover it's done above, this sets it to 1 rather than 0 as a minimum
   
   Serial.print(F("Writing settings version : "));    
   Serial.println(Settings.SettingsVersion);
@@ -115,7 +125,7 @@ void ReadSettings()
 {
   //read settings from eeprom, filling with defaults if eeprom is blank (0xff) or it appears corrupt
   //just adding all the bytes individually allowing it to rollover and making a checksum at the end
-  //bool SettingsTypeVersionCode = 0; // local var for the eeprom read
+
   if (EEPROM.read(0) == SettingsTypeVersion) //struct matches our data storage type
   {    
 
@@ -196,10 +206,13 @@ void setupmenu() {
   Serial.setTimeout(60000);
   while (true) {
     Serial.println(F("Output Settings"));
+  //output stuff    
+    //Settings.MaxOutputPulse = 2000; // 2000 cap output to value
     Serial.print(F("Max Output Pulse                : "));
     SettingsBuffer.MaxOutputPulse = IntegerSettingsSelection(Settings.MaxOutputPulse,SettingsDefault.MaxOutputPulse);
     Serial.println(SettingsBuffer.MaxOutputPulse);
-
+    
+    //Settings.MinOutputPulse = 1000; // 1000 cap output to value
     Serial.print(F("Min Output Pulse                : "));
     SettingsBuffer.MinOutputPulse = IntegerSettingsSelection(Settings.MinOutputPulse,SettingsDefault.MinOutputPulse);
     Serial.println(SettingsBuffer.MinOutputPulse);
@@ -212,39 +225,34 @@ void setupmenu() {
 
   //Safety Stuff
     Serial.println(F("Safety Settings"));
-  //Settings.StartupPulsesRequired = 100; // 100 how may pulses between CenterPointInputMin and Max are needed before starting, ensures no movement when powered on
+    //Settings.StartupPulsesRequired = 100; // 100 how may pulses between CenterPointInputMin and Max are needed before starting, ensures no movement when powered on
     Serial.print(F("Startup Pulses Required         : "));
     SettingsBuffer.StartupPulsesRequired = IntegerSettingsSelection(Settings.StartupPulsesRequired,SettingsDefault.StartupPulsesRequired);
     Serial.println(SettingsBuffer.StartupPulsesRequired);
 
-  //Settings.MinPulse = 900; // 900 min valid signal pulse
+    //Settings.MinPulse = 900; // 900 min valid signal pulse
     Serial.print(F("Min Input Pulse                 : "));
     SettingsBuffer.MinPulse = IntegerSettingsSelection(Settings.MinPulse,SettingsDefault.MinPulse);
     Serial.println(SettingsBuffer.MinPulse);
 
-  //Settings.MaxPulse = 2300; // 2300 max valid signal pulse
+    //Settings.MaxPulse = 2300; // 2300 max valid signal pulse
     Serial.print(F("Max Input Pulse                 : "));
     SettingsBuffer.MaxPulse = IntegerSettingsSelection(Settings.MaxPulse,SettingsDefault.MaxPulse);
     Serial.println(SettingsBuffer.MaxPulse);
 
-  //Settings.SignalLimit = 10; // 10 how many good servo pulses are needed to say we have good signal. 
+    //Settings.SignalLimit = 10; // 10 how many good servo pulses are needed to say we have good signal. 
     Serial.print(F("Good Signal Minimum             : "));
     SettingsBuffer.SignalLimit = IntegerSettingsSelection(Settings.SignalLimit,SettingsDefault.SignalLimit);
     Serial.println(SettingsBuffer.SignalLimit);
 
   //arming  
     Serial.println(F("Arming Settings"));  
-  //Settings.CenterPulsesReq = 100; // how many pulses between CenterPointInputMin and CenterPointInputMax are required to arm  
+    //Settings.CenterPulsesReq = 100; // how many pulses between CenterPointInputMin and CenterPointInputMax are required to arm  
     Serial.print(F("Center Pulses Required           : "));
     SettingsBuffer.CenterPulsesReq = IntegerSettingsSelection(Settings.CenterPulsesReq,SettingsDefault.CenterPulsesReq);
     Serial.println(SettingsBuffer.CenterPulsesReq);
 
-//  Settings.CenterPointInput = 1500; // 1500 Central pulse width input  
-//    Serial.print("Min Output Pulse                 : "));
-//    SettingsBuffer.MinOutputPulse = IntegerSettingsSelection(Settings.MinOutputPulse,SettingsDefault.MinOutputPulse);
-//    Serial.println(SettingsBuffer.MinOutputPulse);
-
-  //Settings.CenterPointInputMin = 1400; //1000 Central pulse width input minimum value considered as centered for safety (a tollerance essentially)
+    //Settings.CenterPointInputMin = 1400; //1000 Central pulse width input minimum value considered as centered for safety (a tollerance essentially)
     Serial.print(F("Startup Input Minimum            : "));
     SettingsBuffer.CenterPointInputMin = IntegerSettingsSelection(Settings.CenterPointInputMin,SettingsDefault.CenterPointInputMin);
     Serial.println(SettingsBuffer.CenterPointInputMin);
@@ -255,7 +263,7 @@ void setupmenu() {
     Serial.println(SettingsBuffer.CenterPointInputMax);
     
     Serial.println("");
-  //Settings.DisableOutputOnBadSignal = true;
+    //Settings.DisableOutputOnBadSignal = true;
     Serial.print(F("Disable Output On Bad Signal y/n : "));
     SettingsBuffer.DisableOutputOnBadSignal = YesNoInput();
     
@@ -329,11 +337,6 @@ void serialFlush(){
 }
 
 
-byte ValidPulseTrain = 0; //how many good pulses have we recieved
-bool SignalGood = false; // have we recieved enough good servo pulses to trust the input
-
-Servo OutputServo;
-
 void SwitchLowChange() //called every time the low switch is changed, no debounce or anything on here not needed debounce is done in main loop (kinda)
 {
   digitalWrite(LowSwitchLEDPin, !digitalRead(SwitchLowPin));
@@ -376,12 +379,14 @@ void setup() {
   digitalWrite(RCOutputPin, LOW);
 
   Serial.println(F("End point limiter starting"));
-  Serial.println((String)"Version : " + Version);
+  Serial.print(F("Version : "));
+  Serial.println(Version);
  
   PowerCycleCounter();
   ReadSettings();
   
-  Serial.println((String)F("Center stick for arming Pulses : ") + (Settings.CenterPulsesReq)); 
+  Serial.println(F("Center stick for arming Pulses : ")); 
+  Serial.println(Settings.CenterPulsesReq);
   //Serial.println(); 
   //Serial.println();
   Serial.println(F("Pre Arm pulse Seq"));
@@ -401,9 +406,10 @@ void setup() {
       StartupPulses++;
       if (StartupPulses % 5 == 0) {
         digitalWrite(LEDOutPin, !digitalRead(LEDOutPin));  //Very fast toggle LED pin during startup with good signal %10 is too close to regular flashing to signal arming       
-        Serial.println((String) F("Press S for setup : Valid Pulses Rx : ") + StartupPulses + "/" + Settings.StartupPulsesRequired);
-        //Serial.print("/");
-        //Serial.println(Settings.StartupPulsesRequired);
+        Serial.print(F("Press S for setup : Valid Pulses Rx : "));
+        Serial.print(StartupPulses);
+        Serial.print("/");
+        Serial.println(Settings.StartupPulsesRequired);
       }
     } else {
       // invalid signal recieved
@@ -459,12 +465,17 @@ void print_status(int PulseDuration,int PulseOutVal,bool SwitchLow,bool SwitchHi
 }
 
 void loop() {
+  //using static vars here to protect against memory fragmentation or other weirdness, shouldn't be an issue but hey why not.
   static byte filter = 0; // used to only write out infrequently
   static int PulseOutVal = 1500; // output pulse value
   
-  int ch1; // Servo input values, in microseconds so use int
+  static unsigned long LastSignalGoodTime = 0; //stores millis() of the last time we had good signal.
+  static unsigned long CurrentTime = 0; //stores millis()
+  
+  static int ch1; // Servo input values, in microseconds so use int
   static bool DipSignalLights = false; // If true then black out the switch signal lights to indicate good signal being inhibited, stay oposite to status LED for clarity
 
+  
   ch1 = pulseIn(RCInputPin, HIGH, 40000); // Read the pulse width of the servo, needs to be long because it spends most of it's time off.
   
   
@@ -486,7 +497,7 @@ void loop() {
 
   if (SignalGood) {
     //we are happy with the radio reception, do the actual processing
-
+    LastSignalGoodTime = millis();
     PulseOutVal = ch1; //set output to input then do the limiting later
     
     if ((!digitalRead(SwitchLowPin)) & (ch1 < Settings.CenterOutputPulse)) // minimum switch is activated and input is still driving into the switch
@@ -508,7 +519,24 @@ void loop() {
     digitalWrite(LowSwitchLEDPin, !digitalRead(SwitchLowPin)); //reset signal LEDs
     digitalWrite(HighSwitchLEDPin, !digitalRead(SwitchHighPin)); //reset signal LEDs
   }
+
+
+  // if it's been over half a second of bad signal then disable the output if we are in that mode
+  CurrentTime = millis();
+  if ((CurrentTime - LastSignalGoodTime > 500) & (Settings.DisableOutputOnBadSignal)) { 
+      OutputServo.detach();
+  } 
+
   OutputServo.write(PulseOutVal);
+  
+  // Otherwise check if the output is disabled and re-enable it.  
+  if ((SignalGood) & (!OutputServo.attached())) {
+      OutputServo.attach(RCOutputPin);     
+  }
+  
+
+
+  
     //occasionally print status updates
   filter++;
   
