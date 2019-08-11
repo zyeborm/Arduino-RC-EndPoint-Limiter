@@ -396,7 +396,7 @@ void setup() {
     if (Serial.available() > 0) {
       // read the incoming byte:
       RxData = Serial.read();
-      if( RxData == 83) {
+      if( RxData == 83) { //83 = ascii s
         setupmenu();
       }
     }
@@ -476,7 +476,7 @@ void loop() {
   static bool DipSignalLights = false; // If true then black out the switch signal lights to indicate good signal being inhibited, stay oposite to status LED for clarity
 
   
-  ch1 = pulseIn(RCInputPin, HIGH, 40000); // Read the pulse width of the servo, needs to be long because it spends most of it's time off.
+  ch1 = pulseIn(RCInputPin, HIGH, 40000); // Read the pulse width of the servo, needs to be long because it spends most of its time off.
   
   
   //2ms max on time * 50 pps = 100ms maximum on time per second.
@@ -491,7 +491,7 @@ void loop() {
   }
 
 
-  if (ValidPulseTrain == 10) {    //we have recieved at least SignalLimit of valid pulses in a row so signal is good
+  if (ValidPulseTrain == Settings.SignalLimit) {    //we have recieved at least SignalLimit of valid pulses in a row so signal is good
     SignalGood = true;
   }
 
